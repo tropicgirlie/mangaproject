@@ -7,7 +7,6 @@ import {
   renderShuchuSenSpeedLines,
   renderDebugLandmarksOverlay,
 } from './engine/mangaOverlay';
-import { SyntheticStudioSource } from './engine/syntheticStudio';
 
 // Dwell timing specifications
 const DWELL_FILL_DURATION_SEC = 1.2; // 0.0 -> 1.0 over 1.2 seconds
@@ -16,10 +15,9 @@ const STAGE1_THRESHOLD = 0.15;       // Vector Manga Eyes trigger at progress > 
 const STAGE2_COOLDOWN_SEC = 3.0;     // 3-second cooldown before reverting when looking away in Stage 2
 
 export default function App() {
-  // Permission Gate & Input Source State
+  // Permission Gate State
   const [gateOpen, setGateOpen] = useState(true);
   const [isInitializing, setIsInitializing] = useState(false);
-  const [sourceMode, setSourceMode] = useState('webcam'); // 'webcam' | 'studio'
   const [cameraError, setCameraError] = useState(null);
   const [modelStatus, setModelStatus] = useState('Standby');
 
@@ -44,7 +42,6 @@ export default function App() {
   // Google Material Expressive "Mangaface Effect" Debug Drawer State
   const [debugOpen, setDebugOpen] = useState(false);
   const [showLandmarkMesh, setShowLandmarkMesh] = useState(false);
-  const [studioLookAway, setStudioLookAway] = useState(false);
 
   // DOM & Engine Refs
   const webglCanvasRef = useRef(null);
@@ -52,7 +49,6 @@ export default function App() {
   const videoRef = useRef(null);
   const rendererRef = useRef(null);
   const landmarkerRef = useRef(null);
-  const syntheticStudioRef = useRef(null);
   const streamRef = useRef(null);
 
   // High-frequency Mutable State Machine Ref
@@ -108,7 +104,6 @@ export default function App() {
         numFaces: 1,
       });
     } catch {
-      // Fallback to CPU delegate if WebGL GPU delegate is restricted
       landmarker = await FaceLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath: modelPath,
@@ -133,33 +128,16 @@ export default function App() {
     }, 160);
   }, []);
 
-  // Detect if running inside an embedded preview iframe that blocks camera permissions
-  const [isEmbeddedIframe] = useState(() => {
-    try {
-      return window.self !== window.top;
-    } catch {
-      return true;
-    }
-  });
-
-  const handleOpenInNewTab = useCallback(() => {
-    window.open(window.location.href, '_blank', 'noopener,noreferrer');
-  }, []);
-
-  // Start Live Webcam Feed — IMPORTANT: Call getUserMedia FIRST synchronously on user click
-  // so the browser preserves the transient user gesture activation and shows the permission prompt!
+  // Start Live Webcam Feed — Calls getUserMedia synchronously on user click
   const handleEnableCamera = useCallback(async () => {
     setIsInitializing(true);
     setCameraError(null);
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error(
-          'Browser blocked camera API in this embedded frame. Click "Open in New Tab to Use Live Webcam" below.'
-        );
+        throw new Error('Browser camera API is unavailable. Please ensure you are on HTTPS or localhost.');
       }
 
-      // 1. Request camera immediately during the user click event!
       let stream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -171,14 +149,12 @@ export default function App() {
           audio: false,
         });
       } catch {
-        // Fallback to simplest possible constraint if specific resolution/facingMode is rejected
         stream = await navigator.mediaDevices.getUserMedia({
           video: true,
           audio: false,
         });
       }
 
-      // Stop any previous stream tracks
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
@@ -189,62 +165,16 @@ export default function App() {
         await videoRef.current.play();
       }
 
-      // 2. Open viewport immediately so user sees their live camera feed right away
-      setSourceMode('webcam');
       setGateOpen(false);
-
-      // 3. Initialize MediaPipe FaceLandmarker in parallel/after camera starts
       await ensureFaceLandmarker();
     } catch (err) {
       const errName = err?.name ? `${err.name}: ` : '';
-      const msg =
-        err?.message ||
-        'Camera permission was denied or blocked by the embedded preview iframe.';
-      setCameraError(
-        `${errName}${msg} — Embedded preview iframes block webcam popups by browser security policy. Click the red "Open in New Browser Tab for Live Webcam ↗" button right below to pop this preview out into a full tab where your webcam permission prompt works!`
-      );
+      const msg = err?.message || 'Camera permission was denied.';
+      setCameraError(`${errName}${msg}`);
     } finally {
       setIsInitializing(false);
     }
   }, [ensureFaceLandmarker]);
-
-  // Start Interactive Studio Mode (100% client-side synthetic subject feeding the exact same pipeline)
-  const handleStartStudioMode = useCallback(async () => {
-    setIsInitializing(true);
-    setCameraError(null);
-
-    try {
-      // Attempt to initialize MediaPipe in background so user can inspect status
-      ensureFaceLandmarker().catch(() => {
-        setModelStatus('Studio Landmark Stream Active');
-      });
-
-      if (!syntheticStudioRef.current) {
-        syntheticStudioRef.current = new SyntheticStudioSource(1280, 720);
-      }
-      syntheticStudioRef.current.setLookAway(false);
-      setStudioLookAway(false);
-
-      // Reset dwell progress so user sees the 0.0 -> 1.0 Gaze Lock buildup immediately
-      machineRef.current.dwellProgress = 0;
-      machineRef.current.stage2Locked = false;
-      machineRef.current.stage2CooldownSec = 0;
-
-      setSourceMode('studio');
-      setGateOpen(false);
-    } finally {
-      setIsInitializing(false);
-    }
-  }, [ensureFaceLandmarker]);
-
-  // Toggle between Webcam and Studio Mode from top bar
-  const handleToggleSourceMode = useCallback(() => {
-    if (sourceMode === 'webcam') {
-      handleStartStudioMode();
-    } else {
-      handleEnableCamera();
-    }
-  }, [sourceMode, handleStartStudioMode, handleEnableCamera]);
 
   // Download Manga Frame Snapshot CTA in Stage 2
   const handleCaptureMangaPanel = useCallback(() => {
@@ -286,10 +216,6 @@ export default function App() {
     rendererRef.current = renderer;
     const ovCtx = ovCanvas.getContext('2d');
 
-    if (!syntheticStudioRef.current) {
-      syntheticStudioRef.current = new SyntheticStudioSource(1280, 720);
-    }
-
     const handleResize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const w = Math.floor(window.innerWidth * dpr);
@@ -322,14 +248,12 @@ export default function App() {
       const canvasW = ovCanvas.width;
       const canvasH = ovCanvas.height;
 
-      // 1. Acquire active video frame & run MediaPipe FaceLandmarker detection
-      let activeSourceElement = null;
+      // 1. Acquire live webcam frame & run MediaPipe FaceLandmarker detection
+      const video = videoRef.current;
       let sourceW = 1280;
       let sourceH = 720;
 
-      if (sourceMode === 'webcam' && videoRef.current && videoRef.current.readyState >= 2) {
-        const video = videoRef.current;
-        activeSourceElement = video;
+      if (video && video.readyState >= 2) {
         sourceW = video.videoWidth || 1280;
         sourceH = video.videoHeight || 720;
 
@@ -343,21 +267,6 @@ export default function App() {
             // Keep previous frame landmarks on transient timestamp collision
           }
         }
-      } else {
-        // Synthetic Studio Subject fallback (also powers attractive background behind permission gate)
-        const studio = syntheticStudioRef.current;
-        const syntheticResult = studio.update(nowMs);
-        activeSourceElement = studio.canvas;
-        sourceW = studio.width;
-        sourceH = studio.height;
-
-        if (!gateOpen) {
-          m.latestLandmarks = syntheticResult.faceLandmarks[0];
-          m.latestBlendshapes = syntheticResult.faceBlendshapes;
-        } else {
-          m.latestLandmarks = null;
-          m.latestBlendshapes = null;
-        }
       }
 
       // 2. Evaluate Gaze Lock (head yaw/pitch + iris centering + eyeBlinkLeft/Right blendshapes)
@@ -367,8 +276,6 @@ export default function App() {
       // 3. Advance Interaction State Machine (IDLE -> GAZE LOCK -> STAGE 1 -> STAGE 2)
       if (!gateOpen) {
         if (m.stage2Locked) {
-          // In Stage 2 Full Manga Mode: lock it in while gaze continues,
-          // or maintain a 3-second cooldown before reverting if user looks away
           if (gaze.isGazeLocked) {
             m.dwellProgress = 1.0;
             m.stage2CooldownSec = STAGE2_COOLDOWN_SEC;
@@ -380,7 +287,6 @@ export default function App() {
             }
           }
         } else {
-          // Building or decaying dwellProgress (0.0 -> 1.0 over 1.2 seconds)
           if (gaze.isGazeLocked) {
             const nextProgress = Math.min(1.0, m.dwellProgress + dtSec / DWELL_FILL_DURATION_SEC);
             if (nextProgress >= 1.0 && m.dwellProgress < 1.0) {
@@ -410,9 +316,9 @@ export default function App() {
       }
 
       // 4. Render WebGL Video Feed & Stage 2 Anti-Aliased Sobel + Diagonal Screentone Shader
-      if (activeSourceElement) {
+      if (video && video.readyState >= 2) {
         const mangaShaderAmount = m.stage2Locked ? 1.0 : 0.0;
-        renderer.renderFrame(activeSourceElement, {
+        renderer.renderFrame(video, {
           mangaAmount: mangaShaderAmount,
           mirror: true,
           edgeThreshold: 0.28,
@@ -424,7 +330,6 @@ export default function App() {
       ovCtx.clearRect(0, 0, canvasW, canvasH);
 
       if (!gateOpen && m.latestLandmarks) {
-        // Stage 1 (> 0.15) & Stage 2 (== 1.0): Overlay stylized vector manga eyes with natural blink
         renderMangaEyesOverlay(ovCtx, {
           landmarks: m.latestLandmarks,
           eyeBlinkLeft: gaze.eyeBlinkLeft,
@@ -451,12 +356,11 @@ export default function App() {
         }
       }
 
-      // Stage 2: Draw animated black radial speed lines (shuchu-sen) around outer 20% border
       if (!gateOpen && m.stage2Locked) {
         renderShuchuSenSpeedLines(ovCtx, canvasW, canvasH, nowMs);
       }
 
-      // 6. Sync React UI state at ~24 Hz so DOM gauges stay silky without bottlenecking WebGL
+      // 6. Sync React UI state at ~24 Hz
       if (nowMs - m.lastUiSyncMs >= 42) {
         m.lastUiSyncMs = nowMs;
         setUiState({
@@ -484,7 +388,7 @@ export default function App() {
       window.removeEventListener('resize', handleResize);
       renderer.destroy();
     };
-  }, [sourceMode, gateOpen, showLandmarkMesh, triggerStage2Shake]);
+  }, [gateOpen, showLandmarkMesh, triggerStage2Shake]);
 
   // Clean up camera media tracks on unmount
   useEffect(() => {
@@ -493,40 +397,6 @@ export default function App() {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
     };
-  }, []);
-
-  // Allow pointer movement in Studio Mode to steer synthetic subject's gaze interactively
-  const handleViewportPointerMove = useCallback(
-    (e) => {
-      if (sourceMode !== 'studio' || gateOpen || studioLookAway) return;
-      const studio = syntheticStudioRef.current;
-      if (!studio) return;
-
-      const normX = (e.clientX / window.innerWidth - 0.5) * 2;
-      const normY = (e.clientY / window.innerHeight - 0.5) * 2;
-      // Within central reticle zone, lock gaze dead-center into lens
-      if (Math.hypot(normX, normY) < 0.42) {
-        studio.setGazeTarget(0, 0);
-      } else {
-        studio.setGazeTarget(normX * 0.85, normY * 0.75);
-      }
-    },
-    [sourceMode, gateOpen, studioLookAway]
-  );
-
-  // Toggle Look Away / Gaze Lock in Studio Mode
-  const handleToggleStudioLookAway = useCallback(() => {
-    const next = !studioLookAway;
-    setStudioLookAway(next);
-    if (syntheticStudioRef.current) {
-      syntheticStudioRef.current.setLookAway(next);
-    }
-  }, [studioLookAway]);
-
-  const handleTriggerStudioBlink = useCallback(() => {
-    if (syntheticStudioRef.current) {
-      syntheticStudioRef.current.triggerBlink();
-    }
   }, []);
 
   // Force Stage 2 Lock toggle from Debug Panel for instant inspection
@@ -556,7 +426,6 @@ export default function App() {
     <main
       id="mangaface-app"
       className={`manga-app ${isShaking ? 'is-shaking' : ''}`}
-      onPointerMove={handleViewportPointerMove}
     >
       {/* Hidden source video element for webcam stream */}
       <video
@@ -622,33 +491,6 @@ export default function App() {
                 : 'IDLE // AWAITING GAZE'}
             </span>
           </div>
-
-          {!gateOpen && (
-            <>
-              <button
-                id="switch-input-mode-btn"
-                type="button"
-                className="mode-switch-btn"
-                onClick={handleToggleSourceMode}
-              >
-                {sourceMode === 'webcam' ? 'Source: Live Camera' : 'Source: Studio Rig'}
-              </button>
-              {isEmbeddedIframe && (
-                <button
-                  id="header-open-new-tab-btn"
-                  type="button"
-                  className="mode-switch-btn"
-                  style={{
-                    background: 'var(--hanko-red)',
-                    color: 'var(--paper-white)',
-                  }}
-                  onClick={handleOpenInNewTab}
-                >
-                  Pop Out Tab for Webcam ↗
-                </button>
-              )}
-            </>
-          )}
         </div>
       </header>
 
@@ -702,28 +544,6 @@ export default function App() {
 
           {/* Minimal Landing Page Copy Overlaid on Live Feed */}
           <div className="hero-prompt-bar">
-            {sourceMode === 'studio' && (
-              <div id="studio-simulator-controls" className="simulator-pill">
-                <span>STUDIO GAZE RIG:</span>
-                <button
-                  id="studio-gaze-lock-toggle"
-                  type="button"
-                  className={`sim-toggle-btn ${!studioLookAway ? 'active' : ''}`}
-                  onClick={handleToggleStudioLookAway}
-                >
-                  {!studioLookAway ? 'Gaze Locked (Look Away)' : 'Looking Away (Lock Gaze)'}
-                </button>
-                <button
-                  id="studio-trigger-blink-btn"
-                  type="button"
-                  className="sim-toggle-btn"
-                  onClick={handleTriggerStudioBlink}
-                >
-                  Blink Eyes
-                </button>
-              </div>
-            )}
-
             <div
               id="landing-copy-plaque"
               className={`stare-plaque ${
@@ -904,7 +724,7 @@ export default function App() {
 
               {cameraError && (
                 <div id="camera-error-banner" className="gate-error-banner">
-                  <strong>Why Camera Was Blocked:</strong> {cameraError}
+                  <strong>Camera Permission Required:</strong> {cameraError}
                 </div>
               )}
 
@@ -920,33 +740,6 @@ export default function App() {
                     {isInitializing ? 'Initializing Vision Engine...' : 'Enable Camera to Enter'}
                   </span>
                   <span aria-hidden="true">→</span>
-                </button>
-
-                {(isEmbeddedIframe || cameraError) && (
-                  <button
-                    id="open-new-tab-camera-btn"
-                    type="button"
-                    className="enable-camera-btn"
-                    style={{
-                      background: 'var(--hanko-red)',
-                      color: 'var(--paper-white)',
-                      boxShadow: '6px 6px 0px var(--ink-black)',
-                    }}
-                    onClick={handleOpenInNewTab}
-                  >
-                    <span>Open in New Browser Tab for Live Webcam</span>
-                    <span aria-hidden="true">↗</span>
-                  </button>
-                )}
-
-                <button
-                  id="launch-studio-fallback-btn"
-                  type="button"
-                  className="synthetic-studio-btn"
-                  onClick={handleStartStudioMode}
-                  disabled={isInitializing}
-                >
-                  Or Test Immediately with Interactive 60 FPS Studio Gaze Rig →
                 </button>
               </div>
 
