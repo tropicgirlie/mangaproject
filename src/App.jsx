@@ -14,12 +14,21 @@ const DWELL_DECAY_RATE = 1.45;       // Smooth decay back to 0 when user looks a
 const STAGE1_THRESHOLD = 0.15;       // Vector Manga Eyes trigger at progress > 0.15
 const STAGE2_COOLDOWN_SEC = 3.0;     // 3-second cooldown before reverting when looking away in Stage 2
 
+const COLOR_STYLES = [
+  { id: 0, label: '01 Golden Hour', swatch: '#FF9E7D' },
+  { id: 1, label: '02 Shinkai Sky', swatch: '#38BDF8' },
+  { id: 2, label: '03 Neo-Tokyo Cel', swatch: '#FB7185' },
+];
+
 export default function App() {
   // Permission Gate State
   const [gateOpen, setGateOpen] = useState(true);
   const [isInitializing, setIsInitializing] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [modelStatus, setModelStatus] = useState('Standby');
+
+  // Active Colorful Anime Style (0 = Golden Hour Nostalgia, 1 = Shinkai Vivid Sky, 2 = Neo-Tokyo Cel)
+  const [colorStyle, setColorStyle] = useState(0);
 
   // UI & Interaction State Machine React Snapshots (throttled for 60fps performance)
   const [uiState, setUiState] = useState({
@@ -315,18 +324,19 @@ export default function App() {
         currentStage = 'GAZE_LOCK';
       }
 
-      // 4. Render WebGL Video Feed & Stage 2 Anti-Aliased Sobel + Diagonal Screentone Shader
+      // 4. Render WebGL Video Feed & Stage 2 Full-Color Cel-Shaded Anime Shader
       if (video && video.readyState >= 2) {
         const mangaShaderAmount = m.stage2Locked ? 1.0 : 0.0;
         renderer.renderFrame(video, {
           mangaAmount: mangaShaderAmount,
           mirror: true,
-          edgeThreshold: 0.28,
-          dotFrequency: 5.5,
+          edgeThreshold: 0.26,
+          dotFrequency: 6.0,
+          colorStyle,
         });
       }
 
-      // 5. Render 2D Vector Overlay (Stage 1 Manga Eyes + Stage 2 Radial Shuchu-sen Speed Lines)
+      // 5. Render 2D Contour-Locked Anime Eyes Overlay (Stage 1 > 0.15) & Radial Speed Lines (Stage 2)
       ovCtx.clearRect(0, 0, canvasW, canvasH);
 
       if (!gateOpen && m.latestLandmarks) {
@@ -341,6 +351,7 @@ export default function App() {
           videoWidth: sourceW,
           videoHeight: sourceH,
           mirror: true,
+          colorStyle,
         });
 
         if (showLandmarkMesh) {
@@ -357,7 +368,7 @@ export default function App() {
       }
 
       if (!gateOpen && m.stage2Locked) {
-        renderShuchuSenSpeedLines(ovCtx, canvasW, canvasH, nowMs);
+        renderShuchuSenSpeedLines(ovCtx, canvasW, canvasH, nowMs, colorStyle);
       }
 
       // 6. Sync React UI state at ~24 Hz
@@ -388,7 +399,7 @@ export default function App() {
       window.removeEventListener('resize', handleResize);
       renderer.destroy();
     };
-  }, [gateOpen, showLandmarkMesh, triggerStage2Shake]);
+  }, [gateOpen, showLandmarkMesh, colorStyle, triggerStage2Shake]);
 
   // Clean up camera media tracks on unmount
   useEffect(() => {
@@ -451,7 +462,7 @@ export default function App() {
         />
       </div>
 
-      {/* Full-Bleed Dual-Canvas Stage (WebGL 1-Bit Shader + 2D Vector Manga Overlay) */}
+      {/* Full-Bleed Dual-Canvas Stage (WebGL Colorful Anime Shader + 2D Contour-Locked Eye Overlay) */}
       <div id="viewport-stage" className="viewport-stage">
         <canvas ref={webglCanvasRef} id="manga-webgl-canvas" className="webgl-canvas" />
         <canvas ref={overlayCanvasRef} id="manga-overlay-canvas" className="overlay-canvas" />
@@ -465,11 +476,43 @@ export default function App() {
           </span>
           <div className="brand-title-group">
             <h1 className="brand-title">Mangaface Effect</h1>
-            <span className="brand-subtitle">1-Bit Gaze Transformation // Vol. 01</span>
+            <span className="brand-subtitle">Color Anime Gaze Transformation // Vol. 01</span>
           </div>
         </div>
 
         <div className="header-controls">
+          {/* Colorful Palette Switcher Pills */}
+          <div className="palette-switcher-group" style={{ display: 'flex', gap: '6px' }}>
+            {COLOR_STYLES.map((st) => (
+              <button
+                key={st.id}
+                id={`palette-style-btn-${st.id}`}
+                type="button"
+                className="mode-switch-btn"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: colorStyle === st.id ? 'var(--ink-black)' : 'var(--paper-white)',
+                  color: colorStyle === st.id ? 'var(--paper-white)' : 'var(--ink-black)',
+                  borderColor: colorStyle === st.id ? 'var(--paper-white)' : 'var(--ink-black)',
+                }}
+                onClick={() => setColorStyle(st.id)}
+              >
+                <span
+                  style={{
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    background: st.swatch,
+                    border: '1.5px solid currentColor',
+                  }}
+                />
+                <span>{st.label}</span>
+              </button>
+            ))}
+          </div>
+
           <div
             id="interaction-stage-badge"
             className={`state-badge-expressive ${
@@ -483,9 +526,9 @@ export default function App() {
             />
             <span>
               {isStage2
-                ? 'STAGE 02 // FULL MANGA MODE'
+                ? 'STAGE 02 // FULL ANIME MODE'
                 : isStage1
-                ? `STAGE 01 // MANGA EYES (${dwellPct}%)`
+                ? `STAGE 01 // ANIME EYES (${dwellPct}%)`
                 : uiState.isGazeLocked
                 ? `GAZE LOCK // DWELL ${dwellPct}%`
                 : 'IDLE // AWAITING GAZE'}
@@ -557,19 +600,19 @@ export default function App() {
               <span className="stare-kicker">
                 {isStage2
                   ? uiState.isGazeLocked
-                    ? 'STAGE 02 LOCKED // 1-BIT SOBEL + HALFTONE'
+                    ? 'STAGE 02 LOCKED // COLOR CEL + SOBEL INK'
                     : `COOLDOWN HOLD // REVERTING IN ${uiState.cooldownRemaining.toFixed(1)}S`
                   : isStage1
-                  ? 'STAGE 01 ACTIVE // BLINK-SYNCED SEINEN EYES'
+                  ? 'STAGE 01 ACTIVE // CONTOUR-LOCKED ANIME EYES'
                   : 'INTERACTIVE GAZE EXPERIMENT'}
               </span>
               <h2 className="stare-headline">
-                {isStage2 ? 'Awakened Manga State' : 'Stare into the lens'}
+                {isStage2 ? 'Awakened Anime State' : 'Stare into the lens'}
               </h2>
               <p className="stare-subcopy">
                 {isStage2
-                  ? 'Hold your gaze to sustain Full Manga Mode, or look away for 3s to release.'
-                  : 'Align head forward & center irises for 1.2s to trigger 1-bit ink transformation.'}
+                  ? 'Hold your gaze to sustain Full Anime Mode, or look away for 3s to release.'
+                  : 'Align head forward & center irises for 1.2s to trigger colorful anime transformation.'}
               </p>
             </div>
           </div>
@@ -705,21 +748,21 @@ export default function App() {
 
               <div>
                 <h2 id="gate-main-heading" className="gate-headline">
-                  Stare Into The Lens. Become Ink.
+                  Stare Into The Lens. Become Anime.
                 </h2>
               </div>
 
               <p className="gate-description">
                 An interactive webcam experiment powered by MediaPipe{' '}
-                <strong>FaceLandmarker</strong> (478 iris landmarks &amp; blink
-                blendshapes) and a custom <strong>1-Bit Sobel + Diagonal Screentone</strong>{' '}
-                WebGL shader. Lock your gaze for 1.2 seconds to awaken Full Manga Mode.
+                <strong>FaceLandmarker</strong> (478 contour-locked iris landmarks
+                &amp; blink blendshapes) and a custom <strong>Full-Color Cel-Shaded Sobel + Halftone</strong>{' '}
+                WebGL shader. Lock your gaze for 1.2 seconds to awaken Full Anime Mode.
               </p>
 
               <div className="gate-spec-pills">
-                <span className="gate-spec-pill">#0A0A0A Ink / #F4F1EA Paper</span>
-                <span className="gate-spec-pill">Stage 1: Blink-Synced Vector Eyes</span>
-                <span className="gate-spec-pill">Stage 2: Shuchu-Sen Speed Lines</span>
+                <span className="gate-spec-pill">3 Color Palettes (Golden Hour / Shinkai / Neo-Tokyo)</span>
+                <span className="gate-spec-pill">Stage 1: Contour-Locked Anime Irises</span>
+                <span className="gate-spec-pill">Stage 2: Color Cel + Shuchu-Sen</span>
               </div>
 
               {cameraError && (
@@ -762,7 +805,7 @@ export default function App() {
               <div className="gate-preview-halftone" />
               <div className="gate-preview-caption">
                 <div>FIG 01. GAZE LOCK THRESHOLD</div>
-                <div>DWELL 0.15 → VECTOR EYES // DWELL 1.00 → FULL 1-BIT MANGA</div>
+                <div>DWELL 0.15 → ANIME IRISES // DWELL 1.00 → FULL COLOR ANIME</div>
               </div>
             </div>
           </div>
