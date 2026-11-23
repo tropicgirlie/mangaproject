@@ -746,6 +746,19 @@ export default function App() {
         </button>
       </aside>
 
+      {/* Editorial Footer — luana.systems */}
+      <footer id="luana-systems-footer" className="luana-footer">
+        <a
+          href="https://www.luana.systems"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="luana-footer-link"
+        >
+          <span className="luana-footer-dot" aria-hidden="true" />
+          <span>luana.systems ↗</span>
+        </a>
+      </footer>
+
       {/* Camera Permission Gate on Load ("Enable Camera to Enter") */}
       {gateOpen && (
         <div
@@ -809,6 +822,17 @@ export default function App() {
                   iris tracking, and WebGL shader rendering stays 100% local in your
                   browser. Zero video frames ever leave your device. ({modelStatus})
                 </span>
+              </div>
+
+              <div className="gate-footer-credit">
+                <span>DESIGN &amp; EXPERIMENT</span>
+                <a
+                  href="https://www.luana.systems"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  luana.systems ↗
+                </a>
               </div>
             </div>
 

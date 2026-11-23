@@ -1002,6 +1002,67 @@ body,
   line-height: 1.35;
 }
 
+.luana-footer {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 45;
+}
+
+.luana-footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--paper-white);
+  color: var(--ink-black);
+  border: 2.5px solid var(--ink-black);
+  box-shadow: 4px 4px 0px var(--ink-black);
+  border-radius: 12px 4px 12px 4px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  transition: transform 240ms var(--spring-expressive), background-color 150ms ease;
+}
+
+.luana-footer-link:hover {
+  transform: translate(-2px, -2px);
+  background: var(--ink-black);
+  color: var(--paper-white);
+  border-color: var(--paper-white);
+  box-shadow: 4px 4px 0px var(--hanko-red);
+}
+
+.luana-footer-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--hanko-red);
+}
+
+.gate-footer-credit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1.5px dashed var(--ink-black);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.gate-footer-credit a {
+  color: var(--ink-black);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.gate-footer-credit a:hover {
+  color: var(--hanko-red);
+}
+
 /* ==========================================================================
    RESPONSIVE BREAKPOINTS
    ========================================================================== */
@@ -1040,6 +1101,11 @@ body,
   .material-expressive-dock {
     bottom: 14px;
     right: 14px;
+  }
+
+  .luana-footer {
+    bottom: 14px;
+    left: 14px;
   }
 
   .mangaface-debug-card {

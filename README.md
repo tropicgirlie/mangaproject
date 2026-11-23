@@ -1,16 +1,24 @@
-# React + Vite
+# Mangaface Effect — Real-Time Gaze-Driven Anime & Manga Transformation
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+**Live Demo:** [https://tropicgirlie.github.io/mangaproject/](https://tropicgirlie.github.io/mangaproject/)
 
-Currently, two official plugins are available:
+An interactive client-side webcam experiment that uses **MediaPipe FaceLandmarker** (478 iris-enabled landmarks and `eyeBlinkLeft` / `eyeBlinkRight` blendshapes) paired with a custom **WebGL Anisotropic Kuwahara & GPU Shader-Space Eye Relighting** pipeline to trigger a real-time manga/anime transformation when you lock your gaze into the lens.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Interaction State Machine
 
-## React Compiler
+1. **IDLE**: Live mirrored webcam viewport with brutalist editorial overlay (*"Stare into the lens"*).
+2. **GAZE LOCK (`dwellProgress 0.0 -> 1.0`)**: Detects forward head orientation (low yaw/pitch) and centered iris landmarks (`#468` & `#473`). Holding gaze fills `dwellProgress` from `0.0` to `1.0` over `1.2s`; looking away smoothly decays it back to `0`.
+3. **STAGE 1 (`progress > 0.15`)**: Triggers GPU shader-space optical eye magnification (`14%` lens warp) and jewel-toned iris relighting with dual specular catchlights and calligraphic upper lash accents synced to your real blink blendshapes.
+4. **STAGE 2 (`progress == 1.0`)**: Snaps the canvas into Full Anime/Manga Mode with a `150ms` screen shake, 4-quadrant Kuwahara oil-paint smoothing, calligraphic Sobel ink outlines, diagonal halftone screentone shadows, animated radial speed lines (*shuchu-sen*), and a vertical `ゴゴゴゴ` SFX stamp + panel snapshot exporter.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 3 Selectable Color Palettes
+- **01 Golden Hour Nostalgia**: Warm sunset peach/coral key light, cyan-teal street shadows, and deep espresso ink.
+- **02 Shinkai Vivid Sky**: Cerulean sky highlights, sakura-pink rim light, and twilight indigo ink.
+- **03 Neo-Tokyo Pop Cel**: Marigold gold highlights, electric rose & cyber-mint halftone accents, and crisp sumi ink.
 
-## Expanding the Oxlint configuration
+## Privacy
+100% client-side in the browser. Zero video frames ever leave your device.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+---
+
+Designed & built by [luana.systems](https://www.luana.systems)
