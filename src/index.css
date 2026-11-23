@@ -1,0 +1,1049 @@
+/* ==========================================================================
+   MANGAFACE EFFECT — BRUTALIST EDITORIAL & GOOGLE MATERIAL EXPRESSIVE SYSTEM
+   Palette: Strict 1-Bit Ink Black (#0A0A0A) & Off-White Paper (#F4F1EA)
+   Accent: Vermilion Hanko Stamp (#D92B2B)
+   ========================================================================== */
+
+:root {
+  --ink-black: #0a0a0a;
+  --paper-white: #f4f1ea;
+  --paper-cream: #eae5d9;
+  --hanko-red: #d92b2b;
+  --ink-dim: rgba(10, 10, 10, 0.72);
+  --paper-glass: rgba(244, 241, 234, 0.92);
+  --ink-glass: rgba(10, 10, 10, 0.88);
+
+  /* Typography */
+  --font-display: 'Syne', 'Space Grotesk', sans-serif;
+  --font-sans: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Space Mono', monospace;
+  --font-jp: 'Noto Serif JP', serif;
+
+  /* Material Expressive Physics & Spring Tokens */
+  --spring-expressive: cubic-bezier(0.22, 1.35, 0.36, 1);
+  --spring-snappy: cubic-bezier(0.16, 1, 0.3, 1);
+  --border-brutal: 2px solid var(--ink-black);
+  --border-brutal-invert: 2px solid var(--paper-white);
+  --shadow-brutal: 5px 5px 0px var(--ink-black);
+  --shadow-brutal-sm: 3px 3px 0px var(--ink-black);
+  --shadow-brutal-red: 5px 5px 0px var(--hanko-red);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--ink-black);
+  color: var(--paper-white);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* ==========================================================================
+   FULL-BLEED VIEWPORT & SCREEN SHAKE
+   ========================================================================== */
+
+.manga-app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--ink-black);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* Subtle paper grain overlay */
+.manga-app::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 35;
+  background-image: radial-gradient(var(--ink-black) 0.55px, transparent 0.55px);
+  background-size: 12px 12px;
+  opacity: 0.08;
+}
+
+@keyframes screen-shake-150 {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  20% {
+    transform: translate3d(-10px, 7px, 0) rotate(-0.8deg) scale(1.018);
+  }
+  40% {
+    transform: translate3d(9px, -8px, 0) rotate(0.7deg) scale(1.022);
+  }
+  60% {
+    transform: translate3d(-8px, -5px, 0) rotate(-0.5deg) scale(1.015);
+  }
+  80% {
+    transform: translate3d(6px, 5px, 0) rotate(0.4deg) scale(1.008);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
+.manga-app.is-shaking .viewport-stage {
+  animation: screen-shake-150 150ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.viewport-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  background-color: var(--ink-black);
+}
+
+.webgl-canvas,
+.overlay-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.webgl-canvas {
+  z-index: 1;
+}
+
+.overlay-canvas {
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Hidden source video element */
+.hidden-source-video {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* ==========================================================================
+   TOP DWELL PROGRESS BAR & EDITORIAL HEADER
+   ========================================================================== */
+
+.top-dwell-track {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 7px;
+  background: var(--ink-black);
+  border-bottom: 2px solid var(--ink-black);
+  z-index: 50;
+  overflow: hidden;
+}
+
+.top-dwell-fill {
+  height: 100%;
+  background: var(--paper-white);
+  transform-origin: left center;
+  transition: transform 60ms linear, background-color 200ms ease;
+}
+
+.top-dwell-fill.stage-2 {
+  background: var(--hanko-red);
+}
+
+.editorial-header {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 28px 14px;
+  pointer-events: none;
+}
+
+.editorial-header > * {
+  pointer-events: auto;
+}
+
+.brand-plaque {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--paper-white);
+  color: var(--ink-black);
+  border: var(--border-brutal);
+  box-shadow: var(--shadow-brutal);
+  padding: 8px 16px;
+  border-radius: 14px 4px 14px 4px;
+  transition: transform 280ms var(--spring-expressive);
+}
+
+.brand-plaque:hover {
+  transform: translate(-2px, -2px);
+}
+
+.brand-hanko {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--hanko-red);
+  color: var(--paper-white);
+  font-family: var(--font-jp);
+  font-weight: 900;
+  font-size: 0.9rem;
+  border: 2px solid var(--ink-black);
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.brand-title-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.brand-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  line-height: 1.05;
+}
+
+.brand-subtitle {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.78;
+}
+
+/* Header Right Controls */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.state-badge-expressive {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--ink-black);
+  color: var(--paper-white);
+  border: 2px solid var(--paper-white);
+  box-shadow: 4px 4px 0px var(--ink-black);
+  border-radius: 999px;
+  transition: all 320ms var(--spring-expressive);
+}
+
+.state-badge-expressive.state-stage1 {
+  background: var(--paper-white);
+  color: var(--ink-black);
+  border-color: var(--ink-black);
+  border-radius: 12px;
+  transform: scale(1.04);
+}
+
+.state-badge-expressive.state-stage2 {
+  background: var(--hanko-red);
+  color: var(--paper-white);
+  border-color: var(--ink-black);
+  box-shadow: 4px 4px 0px var(--ink-black);
+  border-radius: 6px 18px 6px 18px;
+  transform: scale(1.08);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-dot.pulsing {
+  animation: pulse-dot 1s infinite alternate ease-in-out;
+}
+
+@keyframes pulse-dot {
+  from {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  to {
+    transform: scale(1.35);
+    opacity: 1;
+  }
+}
+
+.mode-switch-btn {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.73rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 8px 14px;
+  background: var(--paper-white);
+  color: var(--ink-black);
+  border: var(--border-brutal);
+  box-shadow: var(--shadow-brutal-sm);
+  border-radius: 999px;
+  transition: transform 240ms var(--spring-expressive), background-color 150ms ease;
+}
+
+.mode-switch-btn:hover {
+  transform: translate(-1px, -2px) scale(1.02);
+  background: var(--paper-cream);
+}
+
+.mode-switch-btn:active {
+  transform: translate(1px, 1px);
+}
+
+/* ==========================================================================
+   CENTER GAZE RETICLE & MINIMAL LANDING OVERLAY ("Stare into the lens")
+   ========================================================================== */
+
+.center-hud-layer {
+  position: relative;
+  z-index: 20;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 28px 24px;
+  pointer-events: none;
+}
+
+/* Circular Dwell Progress Ring */
+.dwell-ring-container {
+  position: relative;
+  margin-top: auto;
+  margin-bottom: auto;
+  width: 148px;
+  height: 148px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 400ms var(--spring-expressive), opacity 300ms ease;
+}
+
+.dwell-ring-container.ring-locked {
+  transform: scale(1.22);
+  opacity: 0.16;
+}
+
+.dwell-ring-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  filter: drop-shadow(0px 2px 0px var(--ink-black));
+}
+
+.dwell-ring-track {
+  fill: none;
+  stroke: rgba(244, 241, 234, 0.28);
+  stroke-width: 3;
+  stroke-dasharray: 4 6;
+}
+
+.dwell-ring-progress {
+  fill: none;
+  stroke: var(--paper-white);
+  stroke-width: 5.5;
+  stroke-linecap: square;
+  transition: stroke-dashoffset 50ms linear, stroke 200ms ease;
+}
+
+.dwell-ring-progress.stage-2 {
+  stroke: var(--hanko-red);
+}
+
+.dwell-ring-readout {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: rgba(10, 10, 10, 0.72);
+  color: var(--paper-white);
+  border: 1.5px solid var(--paper-white);
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+/* Bottom Minimal Landing Copy ("Stare into the lens") */
+.hero-prompt-bar {
+  width: 100%;
+  max-width: 780px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  pointer-events: auto;
+}
+
+.stare-plaque {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: var(--paper-white);
+  color: var(--ink-black);
+  border: 3px solid var(--ink-black);
+  box-shadow: 7px 7px 0px var(--ink-black);
+  padding: 14px 28px;
+  border-radius: 22px 6px 22px 6px;
+  transition: all 380ms var(--spring-expressive);
+}
+
+.stare-plaque.is-dwelling {
+  transform: translateY(-4px) scale(1.03);
+  border-radius: 999px;
+}
+
+.stare-plaque.is-manga-locked {
+  background: var(--ink-black);
+  color: var(--paper-white);
+  border-color: var(--paper-white);
+  box-shadow: 7px 7px 0px var(--hanko-red);
+  border-radius: 8px;
+}
+
+.stare-kicker {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--hanko-red);
+}
+
+.stare-plaque.is-manga-locked .stare-kicker {
+  color: var(--paper-white);
+  background: var(--hanko-red);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.stare-headline {
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 2.8vw, 2.15rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  line-height: 1.05;
+}
+
+.stare-subcopy {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  opacity: 0.84;
+}
+
+/* Interactive Fallback Gaze Simulator Bar (when in Synthetic Studio Mode) */
+.simulator-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--ink-black);
+  color: var(--paper-white);
+  border: 2px solid var(--paper-white);
+  box-shadow: var(--shadow-brutal);
+  padding: 7px 16px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.sim-toggle-btn {
+  cursor: pointer;
+  background: var(--paper-white);
+  color: var(--ink-black);
+  border: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  transition: transform 200ms var(--spring-expressive);
+}
+
+.sim-toggle-btn.active {
+  background: var(--hanko-red);
+  color: var(--paper-white);
+}
+
+/* ==========================================================================
+   STAGE 2 FULL MANGA MODE — VERTICAL JAPANESE SFX STAMP & EDITORIAL CTA
+   ========================================================================== */
+
+.stage2-editorial-stamp {
+  position: fixed;
+  top: 92px;
+  left: 32px;
+  z-index: 28;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-28px) scale(0.84);
+  transition: opacity 280ms var(--spring-snappy), transform 380ms var(--spring-expressive);
+}
+
+.stage2-editorial-stamp.visible {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
+}
+
+.vertical-sfx-box {
+  background: var(--paper-white);
+  color: var(--ink-black);
+  border: 4px solid var(--ink-black);
+  box-shadow: 7px 7px 0px var(--ink-black);
+  padding: 16px 12px;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  font-family: var(--font-jp);
+  font-weight: 900;
+  font-size: clamp(1.6rem, 3vw, 2.35rem);
+  letter-spacing: 0.12em;
+  line-height: 1;
+  user-select: none;
+}
+
+.hanko-seal-cta {
+  cursor: pointer;
+  background: var(--hanko-red);
+  color: var(--paper-white);
+  border: 3px solid var(--ink-black);
+  box-shadow: 5px 5px 0px var(--ink-black);
+  padding: 10px 14px;
+  border-radius: 12px 4px 12px 4px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: transform 240ms var(--spring-expressive);
+}
+
+.hanko-seal-cta:hover {
+  transform: scale(1.07) rotate(-2deg);
+}
+
+.hanko-seal-cta:active {
+  transform: scale(0.96);
+}
+
+/* ==========================================================================
+   GOOGLE MATERIAL EXPRESSIVE — "MANGAFACE EFFECT" DEBUG CORNER MODULE
+   ========================================================================== */
+
+.material-expressive-dock {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.mangaface-fab {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: var(--paper-white);
+  color: var(--ink-black);
+  border: 3px solid var(--ink-black);
+  box-shadow: 6px 6px 0px var(--ink-black);
+  border-radius: 28px 10px 28px 10px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: -0.01em;
+  transition: all 340ms var(--spring-expressive);
+}
+
+.mangaface-fab:hover {
+  transform: translate(-2px, -3px) scale(1.03);
+  border-radius: 14px 28px 14px 28px;
+}
+
+.mangaface-fab.is-open {
+  background: var(--ink-black);
+  color: var(--paper-white);
+  border-color: var(--paper-white);
+  box-shadow: 6px 6px 0px var(--hanko-red);
+  border-radius: 999px;
+}
+
+.fab-pill-tag {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--ink-black);
+  color: var(--paper-white);
+}
+
+.mangaface-fab.is-open .fab-pill-tag {
+  background: var(--hanko-red);
+  color: var(--paper-white);
+}
+
+.mangaface-debug-card {
+  width: 330px;
+  background: var(--paper-white);
+  color: var(--ink-black);
+  border: 3px solid var(--ink-black);
+  box-shadow: 8px 8px 0px var(--ink-black);
+  border-radius: 28px 12px 28px 12px;
+  padding: 18px;
+  transform-origin: bottom right;
+  animation: expressive-card-pop 340ms var(--spring-expressive) both;
+}
+
+@keyframes expressive-card-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.76) translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.debug-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 2px solid var(--ink-black);
+}
+
+.debug-card-title-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.debug-card-overline {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--hanko-red);
+}
+
+.debug-card-title {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.debug-fps-chip {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.78rem;
+  background: var(--ink-black);
+  color: var(--paper-white);
+  padding: 5px 10px;
+  border-radius: 12px;
+}
+
+.debug-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.debug-metric-box {
+  background: var(--paper-cream);
+  border: 2px solid var(--ink-black);
+  border-radius: 14px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.debug-metric-box.span-2 {
+  grid-column: span 2;
+}
+
+.metric-label {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.75;
+}
+
+.metric-value {
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.debug-meter-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--paper-white);
+  border: 1.5px solid var(--ink-black);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.debug-meter-fill {
+  height: 100%;
+  background: var(--ink-black);
+  transition: width 60ms linear;
+}
+
+.debug-meter-fill.fill-red {
+  background: var(--hanko-red);
+}
+
+.debug-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1.5px dashed var(--ink-black);
+}
+
+.debug-action-btn {
+  flex: 1;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 7px 10px;
+  border: 2px solid var(--ink-black);
+  background: var(--paper-white);
+  color: var(--ink-black);
+  border-radius: 10px;
+  box-shadow: 2px 2px 0px var(--ink-black);
+  transition: transform 180ms var(--spring-expressive);
+}
+
+.debug-action-btn:hover {
+  transform: translate(-1px, -1px);
+  background: var(--ink-black);
+  color: var(--paper-white);
+}
+
+.debug-action-btn.is-active {
+  background: var(--hanko-red);
+  color: var(--paper-white);
+}
+
+/* ==========================================================================
+   PERMISSION GATE MODAL ("Enable Camera to Enter")
+   ========================================================================== */
+
+.permission-gate-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(10, 10, 10, 0.84);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.permission-gate-card {
+  width: 100%;
+  max-width: 780px;
+  background: var(--paper-white);
+  color: var(--ink-black);
+  border: 4px solid var(--ink-black);
+  box-shadow: 14px 14px 0px var(--ink-black), 18px 18px 0px var(--hanko-red);
+  border-radius: 28px 8px 28px 8px;
+  display: grid;
+  grid-template-columns: 1.25fr 0.95fr;
+  overflow: hidden;
+  animation: expressive-card-pop 420ms var(--spring-expressive) both;
+}
+
+.gate-content-col {
+  padding: 36px 34px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 22px;
+}
+
+.gate-issue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2px solid var(--ink-black);
+  padding-bottom: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.gate-issue-tag {
+  background: var(--hanko-red);
+  color: var(--paper-white);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.gate-headline {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(1.85rem, 3.4vw, 2.65rem);
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+}
+
+.gate-description {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+.gate-spec-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gate-spec-pill {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 5px 10px;
+  background: var(--paper-cream);
+  border: 1.5px solid var(--ink-black);
+  border-radius: 999px;
+}
+
+.gate-cta-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.enable-camera-btn {
+  cursor: pointer;
+  width: 100%;
+  padding: 16px 22px;
+  background: var(--ink-black);
+  color: var(--paper-white);
+  border: 3px solid var(--ink-black);
+  box-shadow: 6px 6px 0px var(--hanko-red);
+  border-radius: 16px 6px 16px 6px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.05rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  transition: transform 260ms var(--spring-expressive), box-shadow 260ms ease;
+}
+
+.enable-camera-btn:hover:not(:disabled) {
+  transform: translate(-3px, -3px);
+  box-shadow: 9px 9px 0px var(--hanko-red);
+}
+
+.enable-camera-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.synthetic-studio-btn {
+  cursor: pointer;
+  width: 100%;
+  padding: 11px 16px;
+  background: transparent;
+  color: var(--ink-black);
+  border: 2px solid var(--ink-black);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: background-color 180ms ease, transform 220ms var(--spring-expressive);
+}
+
+.synthetic-studio-btn:hover {
+  background: var(--paper-cream);
+  transform: translateY(-1px);
+}
+
+.gate-privacy-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--paper-cream);
+  border-left: 4px solid var(--ink-black);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.gate-error-banner {
+  padding: 10px 12px;
+  background: rgba(217, 43, 43, 0.12);
+  border: 2px solid var(--hanko-red);
+  color: var(--ink-black);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  border-radius: 8px;
+}
+
+/* Gate Right Column — Manga Preview Panel */
+.gate-preview-col {
+  position: relative;
+  border-left: 4px solid var(--ink-black);
+  background: var(--ink-black);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.gate-preview-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(100%) contrast(240%);
+  mix-blend-mode: normal;
+  opacity: 0.92;
+}
+
+.gate-preview-halftone {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--ink-black) 1.6px, transparent 1.6px);
+  background-size: 6px 6px;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.gate-preview-caption {
+  position: relative;
+  z-index: 2;
+  margin: 16px;
+  padding: 12px 14px;
+  background: var(--paper-white);
+  color: var(--ink-black);
+  border: 3px solid var(--ink-black);
+  box-shadow: 5px 5px 0px var(--ink-black);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+/* ==========================================================================
+   RESPONSIVE BREAKPOINTS
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .permission-gate-card {
+    grid-template-columns: 1fr;
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+
+  .gate-preview-col {
+    display: none;
+  }
+
+  .gate-content-col {
+    padding: 24px 20px;
+  }
+
+  .editorial-header {
+    padding: 16px 16px 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .stage2-editorial-stamp {
+    top: 84px;
+    left: 14px;
+  }
+
+  .vertical-sfx-box {
+    font-size: 1.35rem;
+    padding: 12px 8px;
+  }
+
+  .material-expressive-dock {
+    bottom: 14px;
+    right: 14px;
+  }
+
+  .mangaface-debug-card {
+    width: calc(100vw - 28px);
+    max-width: 320px;
+  }
+}
