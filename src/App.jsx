@@ -3,6 +3,7 @@ import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import { MangaWebGLRenderer } from './engine/mangaShader';
 import {
   evaluateGazeLock,
+  extractShaderEyeUniforms,
   renderMangaEyesOverlay,
   renderShuchuSenSpeedLines,
   renderDebugLandmarksOverlay,
@@ -324,15 +325,30 @@ export default function App() {
         currentStage = 'GAZE_LOCK';
       }
 
-      // 4. Render WebGL Video Feed & Stage 2 Full-Color Cel-Shaded Anime Shader
+      // 4. Render WebGL Video Feed with GPU Shader-Space Eye Relighting (Stage 1+) & Kuwahara Color Anime Paint (Stage 2)
       if (video && video.readyState >= 2) {
+        const effectiveProgress = m.stage2Locked ? 1.0 : m.dwellProgress;
+        const eyeShaderAmount =
+          effectiveProgress > STAGE1_THRESHOLD
+            ? Math.min(1.0, (effectiveProgress - STAGE1_THRESHOLD) / 0.25)
+            : 0.0;
         const mangaShaderAmount = m.stage2Locked ? 1.0 : 0.0;
+        const eyeUniforms = extractShaderEyeUniforms(
+          m.latestLandmarks,
+          gaze.eyeBlinkLeft,
+          gaze.eyeBlinkRight,
+          sourceW,
+          sourceH
+        );
+
         renderer.renderFrame(video, {
+          eyeAmount: eyeShaderAmount,
           mangaAmount: mangaShaderAmount,
           mirror: true,
           edgeThreshold: 0.26,
           dotFrequency: 6.0,
           colorStyle,
+          eyeUniforms,
         });
       }
 
