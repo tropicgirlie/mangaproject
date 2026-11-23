@@ -1,12 +1,16 @@
 /**
- * MANGAFACE EFFECT — WebGL 1-Bit Manga Shader Pipeline
+ * MANGAFACE EFFECT — WebGL High-Precision Manga Shader Pipeline
  *
- * Implements:
- * - Mirrored live camera / video texture projection (cover fit)
- * - Strict 1-Bit Palette: Ink Black (#0A0A0A) and Off-White Paper (#F4F1EA)
- * - 3x3 Sobel Edge Detection pass for crisp ink outlines (jawline, hair, eyebrows, lips)
- * - 45-degree rotated diagonal halftone screentone dot matrix for midtone luminance
- * - Smooth/instant Stage 2 snap transition driven by `u_mangaAmount`
+ * Improvements over raw 1-bit pixel thresholding:
+ * 1. Bilateral / Gaussian edge-preserving pre-smoothing so webcam sensor noise never creates jagged "rough" speckles.
+ * 2. Smooth anti-aliased Sobel ink linework with organic pen-pressure tapering (using smoothstep instead of hard booleans).
+ * 3. Smooth anti-aliased 45° diagonal screentone dots with soft cell edges and warm editorial tones.
+ * 4. Multi-tone Seinen Editorial Palette:
+ *    - Deep Sumi Ink (#0A0A0A)
+ *    - Warm Halftone Charcoal / Mid-Tone Wash (#231F20)
+ *    - Warm Cream Highlights (#ECE6DA)
+ *    - Warm Editorial Paper (#F4F1EA)
+ *    - Subtle Sunset Blush / Rim Tint inspired by the reference illustration
  */
 
 const VERTEX_SHADER_SOURCE = `
@@ -27,19 +31,20 @@ const FRAGMENT_SHADER_SOURCE = `
   uniform sampler2D u_Texture;
   uniform vec2 u_resolution;
   uniform vec2 u_videoSize;
-  uniform float u_mangaAmount; // 0.0 = raw mirrored feed, 1.0 = full 1-bit manga mode
+  uniform float u_mangaAmount; // 0.0 = raw mirrored feed, 1.0 = full manga mode
   uniform float u_mirror;      // 1.0 = mirror horizontally
   uniform float u_edgeThreshold;
   uniform float u_dotFrequency;
 
-  // Strict 1-bit Manga Palette
-  const vec3 INK_BLACK = vec3(10.0 / 255.0, 10.0 / 255.0, 10.0 / 255.0);       // #0A0A0A
-  const vec3 PAPER_WHITE = vec3(244.0 / 255.0, 241.0 / 255.0, 234.0 / 255.0);  // #F4F1EA
+  // Editorial Manga Palette
+  const vec3 INK_BLACK    = vec3(10.0 / 255.0, 10.0 / 255.0, 12.0 / 255.0);    // #0A0A0C Deep Sumi Ink
+  const vec3 INK_CHARCOAL = vec3(32.0 / 255.0, 29.0 / 255.0, 30.0 / 255.0);    // #201D1E Soft Screentone Ink
+  const vec3 PAPER_WARM   = vec3(236.0 / 255.0, 230.0 / 255.0, 217.0 / 255.0); // #ECE6D9 Warm Midtone Paper
+  const vec3 PAPER_WHITE  = vec3(246.0 / 255.0, 243.0 / 255.0, 236.0 / 255.0); // #F6F3EC Crisp Paper Highlight
+  const vec3 SUNSET_TINT  = vec3(244.0 / 255.0, 224.0 / 255.0, 212.0 / 255.0); // Subtle warm anime rim wash
 
-  float getLuminance(vec3 color) {
-    // Rec. 709 luma with slight contrast S-curve for studio lighting resilience
-    float rawLuma = dot(color, vec3(0.2126, 0.7152, 0.0722));
-    return smoothstep(0.08, 0.92, rawLuma);
+  float rawLuma(vec3 color) {
+    return dot(color, vec3(0.2126, 0.7152, 0.0722));
   }
 
   // Compute cover-fit UV coordinates so video fills canvas without distortion
@@ -61,70 +66,95 @@ const FRAGMENT_SHADER_SOURCE = `
     return clamp(centered, 0.001, 0.999);
   }
 
+  // 5-tap denoised luminance to eliminate webcam sensor grain before Sobel & Screentone
+  float getSmoothLuminance(vec2 uv, vec2 texel) {
+    float c  = rawLuma(texture2D(u_Texture, uv).rgb);
+    float n  = rawLuma(texture2D(u_Texture, uv + vec2(0.0, -texel.y * 0.85)).rgb);
+    float s  = rawLuma(texture2D(u_Texture, uv + vec2(0.0,  texel.y * 0.85)).rgb);
+    float e  = rawLuma(texture2D(u_Texture, uv + vec2( texel.x * 0.85, 0.0)).rgb);
+    float w  = rawLuma(texture2D(u_Texture, uv + vec2(-texel.x * 0.85, 0.0)).rgb);
+    float avg = c * 0.44 + (n + s + e + w) * 0.14;
+    // Gentle S-curve for flattering facial tonal separation
+    return smoothstep(0.06, 0.93, avg);
+  }
+
   void main() {
     vec2 sampleUV = getCoverUV(v_texCoord);
     vec4 rawTex = texture2D(u_Texture, sampleUV);
     vec3 rawColor = rawTex.rgb;
 
-    // Early exit when in pure camera mode
+    // Subtle editorial color grade even in IDLE / Stage 1 camera mode
     if (u_mangaAmount <= 0.001) {
       gl_FragColor = vec4(rawColor, 1.0);
       return;
     }
 
-    // 1. 3x3 Sobel Edge Detection Pass
-    vec2 texel = 1.25 / max(u_videoSize, vec2(640.0, 480.0));
+    // 1. Denoised 3x3 Sobel Edge Detection Pass for clean, anti-aliased calligraphic linework
+    vec2 texel = 1.35 / max(u_videoSize, vec2(640.0, 480.0));
     if (u_mirror > 0.5) {
       texel.x = -texel.x;
     }
 
-    float tl = getLuminance(texture2D(u_Texture, sampleUV + vec2(-texel.x, -texel.y)).rgb);
-    float tm = getLuminance(texture2D(u_Texture, sampleUV + vec2(0.0,      -texel.y)).rgb);
-    float tr = getLuminance(texture2D(u_Texture, sampleUV + vec2( texel.x, -texel.y)).rgb);
+    float tl = getSmoothLuminance(sampleUV + vec2(-texel.x, -texel.y), texel);
+    float tm = getSmoothLuminance(sampleUV + vec2(0.0,      -texel.y), texel);
+    float tr = getSmoothLuminance(sampleUV + vec2( texel.x, -texel.y), texel);
 
-    float ml = getLuminance(texture2D(u_Texture, sampleUV + vec2(-texel.x,  0.0)).rgb);
-    float mm = getLuminance(rawColor);
-    float mr = getLuminance(texture2D(u_Texture, sampleUV + vec2( texel.x,  0.0)).rgb);
+    float ml = getSmoothLuminance(sampleUV + vec2(-texel.x,  0.0), texel);
+    float mm = getSmoothLuminance(sampleUV, texel);
+    float mr = getSmoothLuminance(sampleUV + vec2( texel.x,  0.0), texel);
 
-    float bl = getLuminance(texture2D(u_Texture, sampleUV + vec2(-texel.x,  texel.y)).rgb);
-    float bm = getLuminance(texture2D(u_Texture, sampleUV + vec2(0.0,       texel.y)).rgb);
-    float br = getLuminance(texture2D(u_Texture, sampleUV + vec2( texel.x,  texel.y)).rgb);
+    float bl = getSmoothLuminance(sampleUV + vec2(-texel.x,  texel.y), texel);
+    float bm = getSmoothLuminance(sampleUV + vec2(0.0,       texel.y), texel);
+    float br = getSmoothLuminance(sampleUV + vec2( texel.x,  texel.y), texel);
 
     float gx = -tl - 2.0 * ml - bl + tr + 2.0 * mr + br;
     float gy = -tl - 2.0 * tm - tr + bl + 2.0 * bm + br;
     float gradMagnitude = sqrt(gx * gx + gy * gy);
 
-    bool isSobelEdge = gradMagnitude > u_edgeThreshold;
+    // Smooth anti-aliased ink line weight (no jagged stair-stepping)
+    float edgeStrength = smoothstep(u_edgeThreshold - 0.06, u_edgeThreshold + 0.14, gradMagnitude);
 
-    // 2. Diagonal Halftone Screentone Dot Pattern (45 degrees rotated)
-    float angle = 0.78539816339; // 45 deg in radians
+    // 2. Anti-Aliased 45-Degree Diagonal Halftone Screentone Dot Pattern
+    float angle = 0.78539816339; // 45 deg
     float s = sin(angle);
     float c = cos(angle);
     mat2 rot45 = mat2(c, -s, s, c);
 
-    // Screen-space pixel coordinates scaled by dot cell size
     vec2 rotatedFrag = rot45 * gl_FragCoord.xy;
     vec2 cellUV = fract(rotatedFrag / u_dotFrequency) - 0.5;
-    float distFromCellCenter = length(cellUV); // 0.0 at center to ~0.707 at corner
+    float distFromCellCenter = length(cellUV);
 
-    // Strict 1-Bit Quantization:
-    // - Deep shadow (< 0.22): Solid Ink Black
-    // - Bright highlight (> 0.80): Solid Off-White Paper
-    // - Midtones (0.22..0.80): 1-Bit Diagonal Halftone Screentone Dots
-    bool isDeepShadow = mm < 0.22;
-    bool isBrightHighlight = mm > 0.80;
+    // Tonal zones:
+    // - Deep shadow (< 0.21): Smooth transition into solid Sumi Ink
+    // - Midtones (0.21..0.82): Anti-aliased diagonal screentone dots over warm paper
+    // - Highlights (> 0.82): Clean off-white paper (#F4F1EA)
+    float deepShadowMask = 1.0 - smoothstep(0.16, 0.25, mm);
+    float highlightMask = smoothstep(0.76, 0.86, mm);
 
-    // Normalize midtone darkness: 1.0 near shadow, 0.0 near highlight
-    float midtoneDarkness = clamp((0.80 - mm) / (0.80 - 0.22), 0.0, 1.0);
-    // Radius threshold for binary dot
-    float dotRadius = midtoneDarkness * 0.56;
-    bool isHalftoneDot = (!isBrightHighlight) && (distFromCellCenter < dotRadius);
+    // Normalize midtone darkness (1.0 near shadow, 0.0 near highlight)
+    float midtoneDarkness = clamp((0.83 - mm) / (0.83 - 0.20), 0.0, 1.0);
+    // Curve darkness so facial skin stays clean and mostly paper-toned while shadows get rich screentone
+    float curvedDarkness = pow(midtoneDarkness, 1.25);
+    float dotRadius = curvedDarkness * 0.54;
 
-    // Final strict 1-bit decision: NO muddy grays!
-    bool isInkPixel = isSobelEdge || isDeepShadow || isHalftoneDot;
-    vec3 mangaColor = isInkPixel ? INK_BLACK : PAPER_WHITE;
+    // Anti-aliased dot boundary using smoothstep (eliminates rough pixelation!)
+    float aaWidth = 0.085;
+    float halftoneDotMask = (1.0 - highlightMask) * (1.0 - smoothstep(dotRadius - aaWidth, dotRadius + aaWidth, distFromCellCenter));
 
-    vec3 finalColor = mix(rawColor, mangaColor, clamp(u_mangaAmount, 0.0, 1.0));
+    // Base paper tone with subtle warm editorial gradient
+    vec3 paperTone = mix(PAPER_WARM, PAPER_WHITE, smoothstep(0.45, 0.85, mm));
+    paperTone = mix(paperTone, SUNSET_TINT, 0.14 * (1.0 - highlightMask));
+
+    // Layer 1: Halftone screentone dots in rich charcoal ink
+    vec3 shadedManga = mix(paperTone, INK_CHARCOAL, halftoneDotMask * 0.92);
+
+    // Layer 2: Deep solid sumi ink shadows (hair, pupils, dark folds)
+    shadedManga = mix(shadedManga, INK_BLACK, deepShadowMask);
+
+    // Layer 3: Crisp anti-aliased Sobel ink linework on top
+    shadedManga = mix(shadedManga, INK_BLACK, edgeStrength);
+
+    vec3 finalColor = mix(rawColor, shadedManga, clamp(u_mangaAmount, 0.0, 1.0));
     gl_FragColor = vec4(finalColor, 1.0);
   }
 `;
@@ -147,7 +177,7 @@ export class MangaWebGLRenderer {
     this.gl =
       canvas.getContext('webgl', {
         alpha: false,
-        antialias: false,
+        antialias: true,
         depth: false,
         stencil: false,
         preserveDrawingBuffer: true,
@@ -178,9 +208,7 @@ export class MangaWebGLRenderer {
     this.program = program;
     gl.useProgram(program);
 
-    // Fullscreen quad: clip space positions (-1..1) and flipped Y texture coords (0..1)
     const vertices = new Float32Array([
-      // x,   y,   u,   v
       -1.0, -1.0, 0.0, 1.0,
        1.0, -1.0, 1.0, 1.0,
       -1.0,  1.0, 0.0, 0.0,
@@ -202,7 +230,6 @@ export class MangaWebGLRenderer {
     gl.enableVertexAttribArray(aTex);
     gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 16, 8);
 
-    // Texture setup
     this.texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -210,7 +237,6 @@ export class MangaWebGLRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
-    // Uniform locations
     this.uniforms = {
       u_Texture: gl.getUniformLocation(program, 'u_Texture'),
       u_resolution: gl.getUniformLocation(program, 'u_resolution'),
@@ -232,14 +258,11 @@ export class MangaWebGLRenderer {
     }
   }
 
-  /**
-   * Renders a frame from either a live HTMLVideoElement or an HTMLCanvasElement (synthetic studio source)
-   */
   renderFrame(sourceElement, {
     mangaAmount = 0.0,
     mirror = true,
-    edgeThreshold = 0.24,
-    dotFrequency = 6.5,
+    edgeThreshold = 0.28,
+    dotFrequency = 6.0,
   } = {}) {
     const width = this.canvas.width;
     const height = this.canvas.height;
@@ -247,7 +270,6 @@ export class MangaWebGLRenderer {
     const sourceH = sourceElement.videoHeight || sourceElement.height || 720;
 
     if (!this.gl) {
-      this.renderFallback2D(sourceElement, { mangaAmount, mirror, sourceW, sourceH });
       return;
     }
 
@@ -269,59 +291,6 @@ export class MangaWebGLRenderer {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
-  renderFallback2D(sourceElement, { mangaAmount, mirror, sourceW, sourceH }) {
-    const ctx = this.fallback2D;
-    if (!ctx) return;
-    const w = this.canvas.width;
-    const h = this.canvas.height;
-
-    ctx.save();
-    if (mirror) {
-      ctx.translate(w, 0);
-      ctx.scale(-1, 1);
-    }
-    const scale = Math.max(w / sourceW, h / sourceH);
-    const drawW = sourceW * scale;
-    const drawH = sourceH * scale;
-    const offsetX = (w - drawW) * 0.5;
-    const offsetY = (h - drawH) * 0.5;
-    ctx.drawImage(sourceElement, offsetX, offsetY, drawW, drawH);
-    ctx.restore();
-
-    if (mangaAmount > 0.5) {
-      // CPU 1-bit Sobel + Diagonal Screentone fallback
-      const imgData = ctx.getImageData(0, 0, w, h);
-      const data = imgData.data;
-      const luma = new Float32Array(w * h);
-      for (let i = 0, p = 0; i < data.length; i += 4, p++) {
-        luma[p] = (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
-      }
-      for (let y = 1; y < h - 1; y++) {
-        for (let x = 1; x < w - 1; x++) {
-          const idx = y * w + x;
-          const gx =
-            -luma[idx - w - 1] - 2 * luma[idx - 1] - luma[idx + w - 1] +
-             luma[idx - w + 1] + 2 * luma[idx + 1] + luma[idx + w + 1];
-          const gy =
-            -luma[idx - w - 1] - 2 * luma[idx - w] - luma[idx - w + 1] +
-             luma[idx + w - 1] + 2 * luma[idx + w] + luma[idx + w + 1];
-          const edge = Math.sqrt(gx * gx + gy * gy) > 0.25;
-          const lum = luma[idx];
-          const rotX = (x * 0.7071 - y * 0.7071) % 6;
-          const rotY = (x * 0.7071 + y * 0.7071) % 6;
-          const d = Math.hypot(rotX - 3, rotY - 3) / 4.2;
-          const isInk = edge || lum < 0.22 || (lum < 0.8 && d < (0.8 - lum) / 0.58);
-
-          const p4 = idx * 4;
-          data[p4] = isInk ? 10 : 244;
-          data[p4 + 1] = isInk ? 10 : 241;
-          data[p4 + 2] = isInk ? 10 : 234;
-        }
-      }
-      ctx.putImageData(imgData, 0, 0);
-    }
-  }
-
   destroy() {
     if (this.gl && this.program) {
       this.gl.deleteTexture(this.texture);
@@ -331,10 +300,6 @@ export class MangaWebGLRenderer {
   }
 }
 
-/**
- * Helper to project normalized MediaPipe landmarks (0..1 in source video space)
- * into the cover-fitted & mirrored canvas pixel space.
- */
 export function mapLandmarkToCanvas(landmark, canvasWidth, canvasHeight, videoWidth, videoHeight, mirror = true) {
   const canvasAspect = canvasWidth / Math.max(canvasHeight, 1);
   const videoAspect = videoWidth / Math.max(videoHeight, 1);

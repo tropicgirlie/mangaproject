@@ -1,16 +1,12 @@
 /**
- * MANGAFACE EFFECT — Gaze Lock Evaluator, Vector Manga Eyes & Shuchu-Sen Renderer
+ * MANGAFACE EFFECT — Gaze Lock Evaluator, Refined Anime/Manga Eyes & Shuchu-Sen Renderer
  *
- * Implements:
- * 1. GAZE LOCK DETECTION:
- *    - Head yaw & pitch check via facial symmetry (nose tip #1, left outer eye #33, right outer eye #263, forehead #10, chin #152)
- *    - Iris centering check in eye sockets (Left iris #468 between #33/#133 & #159/#145; Right iris #473 between #362/#263 & #386/#374)
- * 2. STAGE 1 (dwellProgress > 0.15):
- *    - Sharp, high-contrast seinen/shonen vector manga eyes overlaid directly onto left and right eye landmarks
- *    - Thick calligraphic upper lash line, dark radial iris with hatching spokes, two crisp white specular highlights
- *    - Dynamic vertical eye height scaling driven by MediaPipe's `eyeBlinkLeft` and `eyeBlinkRight` blendshapes
- * 3. STAGE 2 (dwellProgress == 1.0):
- *    - Animated black radial speed lines (shuchu-sen) around the outer 20% of the canvas border
+ * Designed after the user's reference illustration:
+ * - Expressive anime/seinen eyes with layered slate-violet/amber-rose iris gradients,
+ *   fine radial ink spokes, upper eyelid shadow cast, calligraphic winged upper lash,
+ *   delicate cheek blush strokes, and dual specular highlights.
+ * - Dynamic vertical openness driven by MediaPipe's `eyeBlinkLeft` and `eyeBlinkRight` blendshapes.
+ * - Clean, razor-sharp radial shuchu-sen speed lines around the outer 20% border in Stage 2.
  */
 
 import { mapLandmarkToCanvas } from './mangaShader';
@@ -19,20 +15,17 @@ const INK_BLACK = '#0A0A0A';
 const PAPER_WHITE = '#F4F1EA';
 const HANKO_RED = '#D92B2B';
 
-// MediaPipe FaceMesh Canonical Landmark Indices
 export const LANDMARKS = {
   NOSE_TIP: 1,
   FOREHEAD: 10,
   CHIN: 152,
 
-  // Subject's Right Eye (appears on Left side of unmirrored image, Right side of mirrored view)
   RIGHT_EYE_OUTER: 33,
   RIGHT_EYE_INNER: 133,
   RIGHT_EYE_TOP: 159,
   RIGHT_EYE_BOTTOM: 145,
   RIGHT_IRIS_CENTER: 468,
 
-  // Subject's Left Eye (appears on Right side of unmirrored image, Left side of mirrored view)
   LEFT_EYE_INNER: 362,
   LEFT_EYE_OUTER: 263,
   LEFT_EYE_TOP: 386,
@@ -40,9 +33,6 @@ export const LANDMARKS = {
   LEFT_IRIS_CENTER: 473,
 };
 
-/**
- * Extracts `eyeBlinkLeft` and `eyeBlinkRight` scores (0..1) from MediaPipe FaceLandmarker result
- */
 export function extractBlinkBlendshapes(faceBlendshapes) {
   let eyeBlinkLeft = 0;
   let eyeBlinkRight = 0;
@@ -62,10 +52,6 @@ export function extractBlinkBlendshapes(faceBlendshapes) {
   return { eyeBlinkLeft, eyeBlinkRight };
 }
 
-/**
- * Evaluates whether the user's head faces forward (low yaw/pitch) and
- * whether the iris landmarks (#468, #473) are centered in the eye sockets.
- */
 export function evaluateGazeLock(landmarks, blendshapes) {
   if (!landmarks || landmarks.length < 474) {
     return {
@@ -95,26 +81,21 @@ export function evaluateGazeLock(landmarks, blendshapes) {
   const lBottom = landmarks[LANDMARKS.LEFT_EYE_BOTTOM];
   const lIris = landmarks[LANDMARKS.LEFT_IRIS_CENTER];
 
-  // 1. Head Yaw Estimate (-1..1, 0 = dead center)
   const eyeMidX = (rOuter.x + lOuter.x) * 0.5;
   const interOcularDist = Math.max(Math.hypot(lOuter.x - rOuter.x, lOuter.y - rOuter.y), 0.05);
   const yaw = (nose.x - eyeMidX) / (interOcularDist * 0.5);
 
-  // 2. Head Pitch Estimate (-1..1, 0 = level forward)
   const faceHeight = Math.max(Math.hypot(chin.x - forehead.x, chin.y - forehead.y), 0.08);
   const eyeMidY = (rOuter.y + lOuter.y) * 0.5;
   const noseRelY = (nose.y - eyeMidY) / faceHeight;
-  // Normal forward-facing noseRelY is ~0.27
   const pitch = (noseRelY - 0.27) * 2.4;
 
-  // 3. Iris Centering within Eye Sockets (0 = dead center, >0.25 = looking sideways)
   const rWidth = Math.max(Math.hypot(rInner.x - rOuter.x, rInner.y - rOuter.y), 0.01);
   const rRatioX = Math.hypot(rIris.x - rOuter.x, rIris.y - rOuter.y) / rWidth;
 
   const lWidth = Math.max(Math.hypot(lOuter.x - lInner.x, lOuter.y - lInner.y), 0.01);
   const lRatioX = Math.hypot(lIris.x - lInner.x, lIris.y - lInner.y) / lWidth;
 
-  // Vertical iris centering
   const rHeight = Math.max(Math.hypot(rBottom.x - rTop.x, rBottom.y - rTop.y), 0.005);
   const rRatioY = Math.hypot(rIris.x - rTop.x, rIris.y - rTop.y) / rHeight;
 
@@ -127,10 +108,9 @@ export function evaluateGazeLock(landmarks, blendshapes) {
 
   const { eyeBlinkLeft, eyeBlinkRight } = extractBlinkBlendshapes(blendshapes);
 
-  // Gaze lock criteria: forward head pose + centered irises
-  const lowYaw = Math.abs(yaw) < 0.26;
-  const lowPitch = Math.abs(pitch) < 0.34;
-  const centeredIris = irisOffsetX < 0.19;
+  const lowYaw = Math.abs(yaw) < 0.28;
+  const lowPitch = Math.abs(pitch) < 0.36;
+  const centeredIris = irisOffsetX < 0.20;
 
   const isGazeLocked = lowYaw && lowPitch && centeredIris;
 
@@ -146,8 +126,12 @@ export function evaluateGazeLock(landmarks, blendshapes) {
 }
 
 /**
- * Draws a single stylized vector Seinen/Shonen Manga Eye onto the 2D overlay canvas.
- * Scales vertical opening dynamically with MediaPipe's `blinkScore` blendshape (0.0 open -> 1.0 closed).
+ * Draws a polished anime/manga eye inspired by the attached reference artwork:
+ * - Soft feathered skin/paper halo so the vector eye integrates organically with live webcam skin
+ * - Deep calligraphic winged upper lash line with subtle warm brown-ink undertone
+ * - Multi-layered radial iris (deep slate upper hood, warm twilight mid-ring, radial ink spokes, crisp pupil)
+ * - Dual crisp `#F4F1EA` specular catchlights
+ * - Subtle diagonal manga blush hatch marks beneath the outer eye corner
  */
 function drawSingleMangaEye(ctx, {
   outerCorner,
@@ -158,44 +142,39 @@ function drawSingleMangaEye(ctx, {
   blinkScore,
   isLeftOnScreen,
   stageProgress,
+  isStage2Locked,
 }) {
   const dx = innerCorner.x - outerCorner.x;
   const dy = innerCorner.y - outerCorner.y;
   const rawEyeWidth = Math.hypot(dx, dy);
 
-  // Expand slightly beyond physiological eye corners for dramatic manga proportions
-  const eyeWidth = rawEyeWidth * 1.38;
+  const eyeWidth = rawEyeWidth * 1.36;
   const eyeCenter = {
     x: (outerCorner.x + innerCorner.x) * 0.5,
     y: (topLid.y + bottomLid.y) * 0.5,
   };
 
-  // Angle of eye axis
   let angle = Math.atan2(dy, dx);
   if (Math.abs(angle) > Math.PI * 0.5) {
     angle += angle > 0 ? -Math.PI : Math.PI;
   }
 
-  // Convert MediaPipe blinkScore (0..1) into vertical openness (1.0 down to 0.06 when blinking)
-  // Smooth amplification so natural blinks snap cleanly
   const clampedBlink = Math.min(1.0, Math.max(0.0, (blinkScore - 0.06) * 1.35));
   const openness = Math.max(0.05, 1.0 - clampedBlink);
 
-  const maxEyeHeight = eyeWidth * 0.56;
+  const maxEyeHeight = eyeWidth * 0.58;
   const currentHeight = maxEyeHeight * openness;
 
-  // Iris relative offset inside the eye (-0.28..0.28)
   const irisRelX = Math.max(
-    -eyeWidth * 0.22,
-    Math.min(eyeWidth * 0.22, (irisCenter.x - eyeCenter.x) * 0.85)
+    -eyeWidth * 0.2,
+    Math.min(eyeWidth * 0.2, (irisCenter.x - eyeCenter.x) * 0.82)
   );
   const irisRelY = Math.max(
-    -currentHeight * 0.18,
-    Math.min(currentHeight * 0.18, (irisCenter.y - eyeCenter.y) * 0.7)
+    -currentHeight * 0.16,
+    Math.min(currentHeight * 0.16, (irisCenter.y - eyeCenter.y) * 0.65)
   );
 
-  // Entrance scale animation as stageProgress goes from 0.15 -> 0.30
-  const popScale = Math.min(1.0, Math.max(0.0, (stageProgress - 0.15) / 0.12));
+  const popScale = Math.min(1.0, Math.max(0.0, (stageProgress - 0.15) / 0.14));
   const easePop = 1 - Math.pow(1 - popScale, 3);
 
   ctx.save();
@@ -205,88 +184,99 @@ function drawSingleMangaEye(ctx, {
 
   const halfW = eyeWidth * 0.5;
   const halfH = currentHeight * 0.5;
-  // Direction toward outer corner (-1 for left-on-screen eye, +1 for right-on-screen eye)
   const outerDir = isLeftOnScreen ? -1 : 1;
 
-  // 1. White paper backing buffer around the eye so it pops cleanly over raw video or halftone
-  ctx.save();
+  // 1. Soft Feathered Backdrop Halo (prevents harsh cutout look over real webcam feed)
+  const haloGrad = ctx.createRadialGradient(0, 0, halfW * 0.3, 0, 0, halfW * 1.28);
+  haloGrad.addColorStop(0, isStage2Locked ? 'rgba(244, 241, 234, 0.96)' : 'rgba(244, 241, 234, 0.78)');
+  haloGrad.addColorStop(0.7, isStage2Locked ? 'rgba(244, 241, 234, 0.65)' : 'rgba(244, 235, 226, 0.35)');
+  haloGrad.addColorStop(1, 'rgba(244, 241, 234, 0.0)');
+  ctx.fillStyle = haloGrad;
   ctx.beginPath();
-  ctx.moveTo(-halfW * 1.12, 0);
-  ctx.bezierCurveTo(
-    -halfW * 0.55, -halfH * 1.5,
-     halfW * 0.55, -halfH * 1.5,
-     halfW * 1.12, -halfH * 0.08 * outerDir
-  );
-  ctx.bezierCurveTo(
-     halfW * 0.55,  halfH * 1.35,
-    -halfW * 0.55,  halfH * 1.35,
-    -halfW * 1.12,  0
-  );
-  ctx.closePath();
-  ctx.fillStyle = PAPER_WHITE;
+  ctx.ellipse(0, 0, halfW * 1.28, Math.max(halfH * 1.55, eyeWidth * 0.26), 0, 0, Math.PI * 2);
   ctx.fill();
+
+  // 2. Subtle Diagonal Anime Cheek Blush Hatch Marks below outer eye (like reference image!)
+  ctx.save();
+  const blushY = Math.max(halfH * 1.15, eyeWidth * 0.24) + eyeWidth * 0.08;
+  const blushX = outerDir * halfW * 0.42;
+  ctx.strokeStyle = isStage2Locked ? 'rgba(217, 43, 43, 0.65)' : 'rgba(224, 96, 88, 0.55)';
+  ctx.lineWidth = Math.max(1.4, eyeWidth * 0.022);
+  ctx.lineCap = 'round';
+  for (let b = -1; b <= 2; b++) {
+    const bx = blushX + b * eyeWidth * 0.085;
+    ctx.beginPath();
+    ctx.moveTo(bx + eyeWidth * 0.03, blushY - eyeWidth * 0.035);
+    ctx.lineTo(bx - eyeWidth * 0.03, blushY + eyeWidth * 0.045);
+    ctx.stroke();
+  }
   ctx.restore();
 
-  // If eye is open (> 0.14), draw sclera, detailed radial iris, pupil, and dual specular highlights
   if (openness > 0.14) {
-    // 2. Almond/Angular Seinen Eye Clipping Path
+    // 3. Almond Eye Sclera Clipping Path
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(-halfW, halfH * 0.06);
+    ctx.moveTo(-halfW, halfH * 0.08);
     ctx.bezierCurveTo(
-      -halfW * 0.48, -halfH * 1.28,
-       halfW * 0.48, -halfH * 1.28,
-       halfW, -halfH * 0.12
+      -halfW * 0.5, -halfH * 1.32,
+       halfW * 0.5, -halfH * 1.32,
+       halfW, -halfH * 0.1
     );
     ctx.bezierCurveTo(
-       halfW * 0.52,  halfH * 1.18,
-      -halfW * 0.52,  halfH * 1.18,
-      -halfW, halfH * 0.06
+       halfW * 0.52,  halfH * 1.22,
+      -halfW * 0.52,  halfH * 1.22,
+      -halfW, halfH * 0.08
     );
     ctx.closePath();
 
-    // Sclera Fill (#F4F1EA)
     ctx.fillStyle = PAPER_WHITE;
     ctx.fill();
     ctx.clip();
 
-    // Upper eyelid cast shadow line inside sclera
-    ctx.fillStyle = INK_BLACK;
+    // Soft upper sclera lid shadow
+    ctx.fillStyle = 'rgba(26, 24, 28, 0.18)';
     ctx.beginPath();
-    ctx.ellipse(0, -halfH * 0.85, halfW * 0.95, halfH * 0.35, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -halfH * 0.72, halfW * 1.02, halfH * 0.48, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // 3. Dark Radial Manga Iris
-    const irisRadius = eyeWidth * 0.27;
+    // 4. Layered Expressive Radial Iris
+    const irisRadius = eyeWidth * 0.285;
     const ix = irisRelX;
-    const iy = irisRelY * 0.5;
+    const iy = irisRelY * 0.45;
 
-    // Outer thick ink iris ring
+    // Outer dark ink limbal ring
     ctx.fillStyle = INK_BLACK;
     ctx.beginPath();
     ctx.arc(ix, iy, irisRadius, 0, Math.PI * 2);
     ctx.fill();
 
-    // Inner off-white paper ring for radial ink spokes
-    ctx.fillStyle = PAPER_WHITE;
-    ctx.beginPath();
-    ctx.arc(ix, iy, irisRadius * 0.78, 0, Math.PI * 2);
-    ctx.fill();
+    // Inner iris gradient (deep charcoal top -> warm slate/amber bottom like reference image)
+    const irisGrad = ctx.createLinearGradient(ix, iy - irisRadius, ix, iy + irisRadius);
+    if (isStage2Locked) {
+      irisGrad.addColorStop(0, '#0A0A0A');
+      irisGrad.addColorStop(0.48, '#2C282A');
+      irisGrad.addColorStop(0.85, '#EAE3D5');
+      irisGrad.addColorStop(1, '#F4F1EA');
+    } else {
+      irisGrad.addColorStop(0, '#12131A');
+      irisGrad.addColorStop(0.45, '#3E3A48');
+      irisGrad.addColorStop(0.82, '#B8A8AC');
+      irisGrad.addColorStop(1, '#F2E6DF');
+    }
 
-    // Upper iris ink hood (classic seinen intense gaze shadow)
-    ctx.fillStyle = INK_BLACK;
+    ctx.fillStyle = irisGrad;
     ctx.beginPath();
-    ctx.arc(ix, iy - irisRadius * 0.32, irisRadius * 0.82, 0, Math.PI, false);
+    ctx.arc(ix, iy, irisRadius * 0.84, 0, Math.PI * 2);
     ctx.fill();
 
     // Radial ink hatching spokes inside iris
     ctx.strokeStyle = INK_BLACK;
-    ctx.lineWidth = Math.max(1.4, eyeWidth * 0.022);
+    ctx.lineWidth = Math.max(1.2, eyeWidth * 0.019);
     const spokeCount = 16;
     for (let s = 0; s < spokeCount; s++) {
       const a = (s / spokeCount) * Math.PI * 2;
       const rIn = irisRadius * 0.34;
-      const rOut = irisRadius * 0.82;
+      const rOut = irisRadius * 0.84;
       ctx.beginPath();
       ctx.moveTo(ix + Math.cos(a) * rIn, iy + Math.sin(a) * rIn);
       ctx.lineTo(ix + Math.cos(a) * rOut, iy + Math.sin(a) * rOut);
@@ -296,28 +286,35 @@ function drawSingleMangaEye(ctx, {
     // Deep Ink Pupil Core
     ctx.fillStyle = INK_BLACK;
     ctx.beginPath();
-    ctx.arc(ix, iy, irisRadius * 0.38, 0, Math.PI * 2);
+    ctx.arc(ix, iy, irisRadius * 0.37, 0, Math.PI * 2);
     ctx.fill();
 
-    // 4. Two Crisp White Specular Highlights
+    // Lower luminous crescent reflection inside iris
+    ctx.strokeStyle = PAPER_WHITE;
+    ctx.lineWidth = Math.max(1.5, irisRadius * 0.1);
+    ctx.beginPath();
+    ctx.arc(ix, iy, irisRadius * 0.58, 0.22 * Math.PI, 0.78 * Math.PI);
+    ctx.stroke();
+
+    // 5. Two Crisp White Specular Catchlights
     ctx.fillStyle = PAPER_WHITE;
-    // Primary top-outer highlight
+    // Large primary upper-outer specular highlight
     ctx.beginPath();
     ctx.arc(
-      ix + outerDir * irisRadius * 0.34,
-      iy - irisRadius * 0.28,
-      irisRadius * 0.24,
+      ix + outerDir * irisRadius * 0.36,
+      iy - irisRadius * 0.3,
+      irisRadius * 0.25,
       0,
       Math.PI * 2
     );
     ctx.fill();
 
-    // Secondary bottom-inner pinpoint highlight
+    // Secondary lower-inner pinpoint highlight
     ctx.beginPath();
     ctx.arc(
       ix - outerDir * irisRadius * 0.32,
       iy + irisRadius * 0.32,
-      irisRadius * 0.13,
+      irisRadius * 0.135,
       0,
       Math.PI * 2
     );
@@ -326,57 +323,53 @@ function drawSingleMangaEye(ctx, {
     ctx.restore();
   }
 
-  // 5. Thick Calligraphic Upper Lash Line (#0A0A0A)
+  // 6. Thick Calligraphic Upper Lash Line (#0A0A0A)
   ctx.fillStyle = INK_BLACK;
   ctx.strokeStyle = INK_BLACK;
   ctx.beginPath();
-  ctx.moveTo(-halfW * 1.08, halfH * 0.1);
+  ctx.moveTo(-halfW * 1.06, halfH * 0.1);
   ctx.bezierCurveTo(
-    -halfW * 0.52, -halfH * 1.48,
-     halfW * 0.52, -halfH * 1.48,
-     halfW * 1.12, -halfH * 0.16
+    -halfW * 0.52, -halfH * 1.52,
+     halfW * 0.52, -halfH * 1.52,
+     halfW * 1.1, -halfH * 0.14
   );
-  // Outer sharp wing tip
-  ctx.lineTo(halfW * (1.12 + 0.14 * outerDir), -halfH * 0.38);
+  // Winged outer lash flick
+  ctx.lineTo(halfW * (1.1 + 0.15 * outerDir), -halfH * 0.42);
   ctx.bezierCurveTo(
-     halfW * 0.5, -halfH * 1.05,
-    -halfW * 0.5, -halfH * 1.05,
-    -halfW * 1.14, -halfH * 0.12
+     halfW * 0.5, -halfH * 1.04,
+    -halfW * 0.5, -halfH * 1.04,
+    -halfW * 1.12, -halfH * 0.1
   );
   ctx.closePath();
   ctx.fill();
 
-  // Sharp upper lash spikes on outer edge
-  const spikeBaseX = outerDir * halfW * 0.78;
-  const spikeBaseY = -halfH * 0.65;
+  // Delicate outer eyelash spikes
+  const spikeBaseX = outerDir * halfW * 0.76;
+  const spikeBaseY = -halfH * 0.68;
   ctx.beginPath();
   ctx.moveTo(spikeBaseX, spikeBaseY);
-  ctx.lineTo(spikeBaseX + outerDir * eyeWidth * 0.16, spikeBaseY - eyeWidth * 0.11);
-  ctx.lineTo(spikeBaseX - outerDir * eyeWidth * 0.06, spikeBaseY - eyeWidth * 0.02);
+  ctx.lineTo(spikeBaseX + outerDir * eyeWidth * 0.15, spikeBaseY - eyeWidth * 0.1);
+  ctx.lineTo(spikeBaseX - outerDir * eyeWidth * 0.05, spikeBaseY - eyeWidth * 0.02);
   ctx.closePath();
   ctx.fill();
 
-  // 6. Crisp Lower Eyelid Line & Double-Eyelid Crease
-  ctx.lineWidth = Math.max(2.0, eyeWidth * 0.035);
+  // 7. Lower Eyelid Line & Upper Double-Eyelid Fold (Mabuta)
+  ctx.lineWidth = Math.max(1.8, eyeWidth * 0.03);
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(-halfW * 0.82, halfH * 0.72);
-  ctx.quadraticCurveTo(0, halfH * 1.18, halfW * 0.86, halfH * 0.62);
+  ctx.moveTo(-halfW * 0.78, halfH * 0.76);
+  ctx.quadraticCurveTo(0, halfH * 1.2, halfW * 0.82, halfH * 0.65);
   ctx.stroke();
 
-  // Upper eyelid crease line (Mabuta)
-  ctx.lineWidth = Math.max(1.5, eyeWidth * 0.024);
+  ctx.lineWidth = Math.max(1.3, eyeWidth * 0.02);
   ctx.beginPath();
-  ctx.moveTo(-halfW * 0.75, -halfH * 1.25 - eyeWidth * 0.08);
-  ctx.quadraticCurveTo(0, -halfH * 1.65 - eyeWidth * 0.09, halfW * 0.85, -halfH * 1.15 - eyeWidth * 0.07);
+  ctx.moveTo(-halfW * 0.72, -halfH * 1.25 - eyeWidth * 0.07);
+  ctx.quadraticCurveTo(0, -halfH * 1.62 - eyeWidth * 0.08, halfW * 0.82, -halfH * 1.12 - eyeWidth * 0.06);
   ctx.stroke();
 
   ctx.restore();
 }
 
-/**
- * Renders both vector manga eyes onto the overlay canvas when dwellProgress > 0.15
- */
 export function renderMangaEyesOverlay(ctx, {
   landmarks,
   eyeBlinkLeft,
@@ -396,34 +389,31 @@ export function renderMangaEyesOverlay(ctx, {
   const project = (idx) =>
     mapLandmarkToCanvas(landmarks[idx], canvasWidth, canvasHeight, videoWidth, videoHeight, mirror);
 
-  // Subject's Left Eye (appears on the LEFT side of mirrored canvas)
   const lOuter = project(LANDMARKS.LEFT_EYE_OUTER);
   const lInner = project(LANDMARKS.LEFT_EYE_INNER);
   const lTop = project(LANDMARKS.LEFT_EYE_TOP);
   const lBottom = project(LANDMARKS.LEFT_EYE_BOTTOM);
   const lIris = project(LANDMARKS.LEFT_IRIS_CENTER);
 
-  // Subject's Right Eye (appears on the RIGHT side of mirrored canvas)
   const rOuter = project(LANDMARKS.RIGHT_EYE_OUTER);
   const rInner = project(LANDMARKS.RIGHT_EYE_INNER);
   const rTop = project(LANDMARKS.RIGHT_EYE_TOP);
   const rBottom = project(LANDMARKS.RIGHT_EYE_BOTTOM);
   const rIris = project(LANDMARKS.RIGHT_IRIS_CENTER);
 
-  // Ensure left-to-right horizontal ordering for clean bezier orientation
-  const screenLeftEye = {
+  drawSingleMangaEye(ctx, {
     outerCorner: lOuter.x < lInner.x ? lOuter : lInner,
     innerCorner: lOuter.x < lInner.x ? lInner : lOuter,
     topLid: lTop,
     bottomLid: lBottom,
     irisCenter: lIris,
-    // MediaPipe's eyeBlinkLeft/Right corresponds to subject's anatomical eyes
     blinkScore: eyeBlinkLeft,
     isLeftOnScreen: true,
     stageProgress: effectiveProgress,
-  };
+    isStage2Locked,
+  });
 
-  const screenRightEye = {
+  drawSingleMangaEye(ctx, {
     outerCorner: rOuter.x < rInner.x ? rOuter : rInner,
     innerCorner: rOuter.x < rInner.x ? rInner : rOuter,
     topLid: rTop,
@@ -432,54 +422,46 @@ export function renderMangaEyesOverlay(ctx, {
     blinkScore: eyeBlinkRight,
     isLeftOnScreen: false,
     stageProgress: effectiveProgress,
-  };
-
-  drawSingleMangaEye(ctx, screenLeftEye);
-  drawSingleMangaEye(ctx, screenRightEye);
+    isStage2Locked,
+  });
 }
 
 /**
  * STAGE 2 FRAMING:
- * Draws animated black radial speed lines (shuchu-sen) around the outer 20% of the canvas border,
- * leaving the central 80% clear for the subject's transformed manga portrait.
+ * Crisp tapered Japanese radial speed lines (shuchu-sen) around the outer 20% border
  */
 export function renderShuchuSenSpeedLines(ctx, canvasWidth, canvasHeight, timestampMs) {
   const cx = canvasWidth * 0.5;
   const cy = canvasHeight * 0.5;
   const maxRadius = Math.hypot(cx, cy) * 1.05;
 
-  // Inner clear ellipse radii (80% of canvas dimensions = outer 20% border filled with speed lines)
-  const clearRx = canvasWidth * 0.39;
-  const clearRy = canvasHeight * 0.39;
+  const clearRx = canvasWidth * 0.40;
+  const clearRy = canvasHeight * 0.40;
 
-  // Animated jitter phase at ~18 FPS manga anime cadence
-  const frameSeed = Math.floor(timestampMs / 55);
-  const numSpokes = 132;
+  const frameSeed = Math.floor(timestampMs / 60);
+  const numSpokes = 148;
 
   ctx.save();
   ctx.fillStyle = INK_BLACK;
 
   for (let i = 0; i < numSpokes; i++) {
-    // Deterministic pseudo-random per spoke + frameSeed
     const hash = Math.sin(i * 127.1 + frameSeed * 311.7) * 43758.5453;
     const rand1 = hash - Math.floor(hash);
     const hash2 = Math.sin(i * 269.5 + frameSeed * 183.3) * 15731.743;
     const rand2 = hash2 - Math.floor(hash2);
 
     const baseAngle = (i / numSpokes) * Math.PI * 2;
-    const angle = baseAngle + (rand1 - 0.5) * 0.018;
+    const angle = baseAngle + (rand1 - 0.5) * 0.014;
 
     const cosA = Math.cos(angle);
     const sinA = Math.sin(angle);
 
-    // Distance from center to the 80% inner boundary along this angle
     const ellipseRadiusAtAngle =
       (clearRx * clearRy) /
       Math.sqrt(Math.pow(clearRy * cosA, 2) + Math.pow(clearRx * sinA, 2));
 
-    // Vary tip intrusion slightly around the outer 20% perimeter
-    const tipRadius = ellipseRadiusAtAngle * (0.94 + rand2 * 0.16);
-    const halfSpread = (0.004 + rand1 * 0.013);
+    const tipRadius = ellipseRadiusAtAngle * (0.95 + rand2 * 0.15);
+    const halfSpread = 0.0025 + rand1 * 0.0095;
 
     const tipX = cx + cosA * tipRadius;
     const tipY = cy + sinA * tipRadius;
@@ -497,21 +479,18 @@ export function renderShuchuSenSpeedLines(ctx, canvasWidth, canvasHeight, timest
     ctx.fill();
   }
 
-  // Brutalist thick ink panel frame border
+  // Editorial Manga Panel Double-Border
   ctx.strokeStyle = INK_BLACK;
-  ctx.lineWidth = 14;
-  ctx.strokeRect(7, 7, canvasWidth - 14, canvasHeight - 14);
+  ctx.lineWidth = 12;
+  ctx.strokeRect(6, 6, canvasWidth - 12, canvasHeight - 12);
 
   ctx.strokeStyle = PAPER_WHITE;
   ctx.lineWidth = 2;
-  ctx.strokeRect(15, 15, canvasWidth - 30, canvasHeight - 30);
+  ctx.strokeRect(14, 14, canvasWidth - 28, canvasHeight - 28);
 
   ctx.restore();
 }
 
-/**
- * Optional Debug Mesh & Gaze Vector Overlay when debug landmarks toggle is active
- */
 export function renderDebugLandmarksOverlay(ctx, {
   landmarks,
   canvasWidth,
@@ -551,7 +530,6 @@ export function renderDebugLandmarksOverlay(ctx, {
     ctx.stroke();
   }
 
-  // Draw symmetry axis
   const f = project(LANDMARKS.FOREHEAD);
   const n = project(LANDMARKS.NOSE_TIP);
   const c = project(LANDMARKS.CHIN);

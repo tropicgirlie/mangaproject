@@ -409,14 +409,14 @@ export default function App() {
         currentStage = 'GAZE_LOCK';
       }
 
-      // 4. Render WebGL Video Feed & Stage 2 1-Bit Sobel + Diagonal Screentone Shader
+      // 4. Render WebGL Video Feed & Stage 2 Anti-Aliased Sobel + Diagonal Screentone Shader
       if (activeSourceElement) {
         const mangaShaderAmount = m.stage2Locked ? 1.0 : 0.0;
         renderer.renderFrame(activeSourceElement, {
           mangaAmount: mangaShaderAmount,
           mirror: true,
-          edgeThreshold: 0.24,
-          dotFrequency: 6.5,
+          edgeThreshold: 0.28,
+          dotFrequency: 5.5,
         });
       }
 
